@@ -24,18 +24,13 @@ class Node:
 def parse_df_recursive(df: pd.DataFrame, parent_id: int, parent_titles: list[str], docs: list[dict] = None, path='') -> list['Node']:
     nodes = []
     for _, row in df[df['PARENT_ID'] == parent_id].iterrows():
-        # title 转为 name， 作为文件路径和文件名
-        name = re.sub(r'[<>:"/\\|?*]', '', row.TITLE)
-        name = name.replace('（', '(')
-        name = name.replace('）', ')')
-
         # 实例化Node对象
         node = Node()
         node.id = row['ID']
         node.parent_id = parent_id
         node.is_doc = row['IS_DOC']
         node.title = row['TITLE']
-        node.name = name
+        node.name = row['TITLE']
         node.dir_path = os.path.join(path, node.name)
         node.file_path = os.path.join(path, node.name+'.md')
         node.content = row['SRC_CONTENT']
@@ -56,7 +51,7 @@ def parse_df_recursive(df: pd.DataFrame, parent_id: int, parent_titles: list[str
             docs.append({
                 'id': node.id,
                 'key': node.key,
-                'title': f'[{node.title}]({node.file_path})',
+                'title': f'[{node.name}]({node.file_path})',
                 'categories': ','.join(node.categories),
                 'desc': node.desc,
             })
@@ -77,9 +72,17 @@ def create_dir_file_recursive(children: list[Node], path: str):
 def main():
     # 读取csv文件，头信息为：ID, PARENT_ID, TITLE, SRC_CONTENT(markdown格式)
     df = pd.read_csv('data/api-doc.csv.csv')
-    df = df.drop(df[df["TITLE"] == "历史Tick行情"].index)
-    docids = set[int](df['PARENT_ID'].tolist())
-    df['IS_DOC'] = ~df['ID'].isin(docids)
+    # title 转为 name， 作为文件路径和文件名
+    df['TITLE'] = df['TITLE'].str.replace(r'[<>:"/\\|?*]', '', regex=True)
+    df['TITLE'] = df['TITLE'].str.replace('（', '(').str.replace('）', ')')
+    df = df.drop(df[df["TITLE"].isin([
+        "历史Tick行情",                 # 当前不提供API方式获取，只提供csv网盘交付
+        "实时Tick(爬虫)",
+        "实时成交(爬虫)",
+        "实时排名(爬虫)"
+    ])].index)
+    doc_ids = set[int](df['PARENT_ID'].tolist())
+    df['IS_DOC'] = ~df['ID'].isin(doc_ids)
     print(df)
     docs = []
     node = parse_df_recursive(df, 2, [], docs, 'references')
